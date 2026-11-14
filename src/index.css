@@ -1,0 +1,170 @@
+@import url('https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&family=Fredoka+One&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 100% 96%;
+    --foreground: 0 0% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+
+    --primary: 350 85% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 45 100% 55%;
+    --secondary-foreground: 0 0% 10%;
+
+    --muted: 40 30% 90%;
+    --muted-foreground: 0 0% 40%;
+
+    --accent: 210 90% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 15%;
+    --input: 0 0% 80%;
+    --ring: 350 85% 55%;
+
+    --radius: 0.5rem;
+
+    --success: 145 70% 42%;
+    --success-foreground: 0 0% 100%;
+
+    --purple: 280 70% 55%;
+    --purple-foreground: 0 0% 100%;
+
+    --comic-blue: 210 90% 55%;
+    --comic-red: 350 85% 55%;
+    --comic-yellow: 45 100% 55%;
+    --comic-green: 145 70% 42%;
+    --comic-orange: 25 95% 55%;
+    --comic-pink: 330 80% 60%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 230 25% 8%;
+    --foreground: 48 100% 96%;
+    --card: 230 20% 12%;
+    --card-foreground: 48 100% 96%;
+    --popover: 230 20% 12%;
+    --popover-foreground: 48 100% 96%;
+    --primary: 350 85% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 45 100% 55%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 230 15% 18%;
+    --muted-foreground: 220 10% 60%;
+    --accent: 210 90% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 50%;
+    --input: 230 15% 22%;
+    --ring: 350 85% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Comic Neue', cursive, sans-serif;
+  }
+  h1, h2, h3 {
+    font-family: 'Bangers', cursive;
+    letter-spacing: 0.05em;
+  }
+}
+
+/* Comic halftone dot pattern */
+.comic-dots {
+  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.06) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+/* Comic panel border */
+.comic-panel {
+  border: 3px solid hsl(var(--foreground));
+  box-shadow: 5px 5px 0px hsl(var(--foreground));
+}
+
+/* Comic speech bubble */
+.comic-bubble {
+  position: relative;
+  border: 2px solid hsl(var(--foreground));
+  border-radius: 1.5rem;
+  background: hsl(var(--card));
+}
+.comic-bubble::after {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: 24px;
+  width: 20px;
+  height: 20px;
+  background: hsl(var(--card));
+  border-left: 2px solid hsl(var(--foreground));
+  border-top: 2px solid hsl(var(--foreground));
+  transform: rotate(45deg);
+}
+
+/* Comic burst/starburst */
+.comic-burst {
+  display: inline-block;
+  padding: 0.25rem 1rem;
+  background: hsl(var(--secondary));
+  border: 2px solid hsl(var(--foreground));
+  transform: rotate(-3deg);
+  font-family: 'Bangers', cursive;
+  letter-spacing: 0.08em;
+}
+
+/* Zigzag divider */
+.comic-zigzag {
+  background: linear-gradient(135deg, hsl(var(--secondary)) 25%, transparent 25%) -10px 0,
+              linear-gradient(225deg, hsl(var(--secondary)) 25%, transparent 25%) -10px 0,
+              linear-gradient(315deg, hsl(var(--secondary)) 25%, transparent 25%),
+              linear-gradient(45deg, hsl(var(--secondary)) 25%, transparent 25%);
+  background-size: 20px 20px;
+  background-color: transparent;
+}
+
+/* Skewed banner */
+.comic-banner {
+  transform: skewX(-3deg);
+  border: 3px solid hsl(var(--foreground));
+  box-shadow: 4px 4px 0px hsl(var(--foreground));
+}
+
+/* Hide scrollbar */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
