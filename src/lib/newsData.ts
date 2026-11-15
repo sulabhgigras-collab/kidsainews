@@ -31,18 +31,21 @@ export interface DialogueLine {
   text: string;
 }
 
+export type StoryCategory = "Science" | "Nature" | "Tech" | "Sports" | "Space" | "World" | "Culture" | "Health" | "Animals" | "US" | "Fun" | "Environment" | "Politics" | "Education";
+
 export interface NewsStory {
   title: string;
   story: string;
   dialogue: DialogueLine[];
   funFact: string;
   emoji: string;
-  category: string;
+  category: StoryCategory | string;
   imageDescription: string;
   country?: string;
   sourceName: string;
   sourceUrl: string;
   publishedAt: string;
+  simplicityScore?: number;
 }
 
 const NEWS_CACHE_VERSION = "v6";
@@ -121,6 +124,9 @@ export const CATEGORY_COLORS: Record<string, { bg: string; text: string; border:
   Animals: { bg: "bg-comic-green/20", text: "text-comic-green", border: "border-comic-green/40" },
   US: { bg: "bg-comic-blue/20", text: "text-comic-blue", border: "border-comic-blue/40" },
   Fun: { bg: "bg-comic-pink/20", text: "text-comic-pink", border: "border-comic-pink/40" },
+  Environment: { bg: "bg-comic-green/20", text: "text-comic-green", border: "border-comic-green/40" },
+  Politics: { bg: "bg-purple/20", text: "text-purple", border: "border-purple/40" },
+  Education: { bg: "bg-comic-blue/20", text: "text-comic-blue", border: "border-comic-blue/40" },
 };
 
 export function getPreferences(): UserPreferences | null {
@@ -135,6 +141,56 @@ export function getPreferences(): UserPreferences | null {
 
 export function savePreferences(prefs: UserPreferences): void {
   localStorage.setItem("kidsainews_preferences", JSON.stringify(prefs));
+}
+
+// Sync preferences to Supabase (fire-and-forget, called after local save)
+export async function syncPreferencesToSupabase(
+  supabase: { from: (table: string) => any },
+  userId: string,
+  prefs: UserPreferences,
+): Promise<void> {
+  try {
+    await supabase.from("user_profiles").upsert({
+      id: userId,
+      age: prefs.age,
+      country: prefs.country,
+      additional_countries: prefs.additionalCountries,
+      interests: prefs.interests,
+      comic_style: prefs.comicStyle,
+      language: prefs.language,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("Failed to sync preferences:", err);
+  }
+}
+
+// Load preferences from Supabase (on login)
+export async function loadPreferencesFromSupabase(
+  supabase: { from: (table: string) => any },
+  userId: string,
+): Promise<UserPreferences | null> {
+  try {
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("age, country, additional_countries, interests, comic_style, language")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (!data || !data.age) return null;
+
+    return {
+      age: data.age,
+      country: data.country || "",
+      additionalCountries: data.additional_countries || [],
+      interests: data.interests || [],
+      comicStyle: data.comic_style || "superhero",
+      language: data.language || "en",
+      onboardingComplete: true,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function getCachedNews(cacheKey: string): { stories: NewsStory[]; date: string } | null {

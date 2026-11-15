@@ -21,8 +21,8 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
     const ageNum = typeof age === "number" ? age : parseInt(String(age ?? "10"), 10) || 10;
     let vocabLevel = "simple and clear language for an 8-10 year old";
@@ -67,12 +67,20 @@ Source: ${sourceName || "Unknown"} (${sourceUrl || "No link"})
 
 A child (age ${ageNum}) asks: "${followUpQuestion.trim()}"
 
-There are TWO kinds of questions:
-1. **Article questions** (e.g. "Why did this happen?", "What did they agree on?") — answer using facts from the article.
-2. **Background questions** (e.g. "Who is [person]?", "What is [country/concept]?", "Where is [place]?") — answer using your general knowledge. Give a simple, accurate, up-to-date explanation. Do NOT say "the article doesn't mention this." Instead, provide a helpful factual answer.
+IMPORTANT — You have TWO sources of knowledge:
+1. **The article above** — use this for questions about what happened in the story.
+2. **Your own knowledge** — use this for EVERYTHING ELSE: full names of people, background info, geography, history, science, definitions, etc.
 
-Rules:
-- Always answer the question. Never refuse or deflect.
+You MUST combine both sources to give the best answer. Examples:
+- "What is Joseph's full name?" → You know who this athlete is from your training data. Say their full name and add a fun fact.
+- "Where is that country?" → Use your geography knowledge. Don't say "the article doesn't mention it."
+- "Why did this happen?" → Use the article's facts.
+
+ABSOLUTE RULES:
+- NEVER say "the article doesn't mention this" or "I don't have that information" or "you can search for it."
+- NEVER tell the child to go look something up themselves.
+- If you truly don't know, say "I'm not 100% sure, but..." and give your best answer.
+- Always answer the question directly and helpfully.
 - Use ${vocabLevel}.
 - Keep it 2-4 sentences.
 - Be neutral, calm, and age-appropriate.
@@ -106,110 +114,114 @@ Use 2-3 sentences. Do NOT just say someone "didn't like it."
 ${langInstruction}`;
     }
 
-    const requestBody: Record<string, unknown> = {
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    };
-
-    if (!isFollowUp) {
-      requestBody.tools = [
-        {
-          type: "function",
-          function: {
-            name: "deliver_explanation",
-            description: "Return a structured child-friendly explanation of a news article",
-            parameters: {
-              type: "object",
-              properties: {
-                moreDetails: { type: "string", description: "2-3 sentences with specific facts not in the summary" },
-                background: { type: "string", description: "2-3 sentences explaining the topic/situation for someone hearing about it for the first time" },
-                whatHappenedBefore: { type: "string", description: "2-3 sentences about what led to this event" },
-                whyItMatters: { type: "string", description: "2-3 sentences connecting to bigger ideas kids can learn from" },
-                hardWords: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      word: { type: "string" },
-                      meaning: { type: "string", description: "Kid-friendly definition in one sentence" },
-                    },
-                    required: ["word", "meaning"],
-                    additionalProperties: false,
-                  },
-                },
-                keyPeople: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      name: { type: "string" },
-                      who: { type: "string", description: "One sentence about who they are and their role in this story" },
-                    },
-                    required: ["name", "who"],
-                    additionalProperties: false,
-                  },
-                },
-              },
-              required: ["moreDetails", "background", "whatHappenedBefore", "whyItMatters", "hardWords", "keyPeople"],
-              additionalProperties: false,
-            },
-          },
-        },
-      ];
-      requestBody.tool_choice = { type: "function", function: { name: "deliver_explanation" } };
-    }
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error("AI gateway error:", response.status, text);
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Too many requests, please try again later." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Service temporarily unavailable." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error("AI gateway error");
-    }
-
-    const aiData = await response.json();
-
     if (isFollowUp) {
-      const content = aiData.choices?.[0]?.message?.content ?? "";
+      // Plain text response for follow-up questions
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Claude API error:", response.status, text);
+        if (response.status === 429) {
+          return new Response(JSON.stringify({ error: "Too many requests, please try again later." }), {
+            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        throw new Error("Claude API error");
+      }
+
+      const aiData = await response.json();
+      const textBlock = aiData.content?.find((b: { type: string }) => b.type === "text");
+      const content = textBlock?.text ?? "";
       return new Response(JSON.stringify({ answer: content.trim() }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Extract from tool call
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    let explanation;
-    if (toolCall?.function?.arguments) {
-      explanation = JSON.parse(toolCall.function.arguments);
-    } else {
-      const content = aiData.choices?.[0]?.message?.content ?? "";
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        return new Response(JSON.stringify({ error: "Could not parse explanation" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Structured response via tool use
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+        tools: [{
+          name: "deliver_explanation",
+          description: "Return a structured child-friendly explanation of a news article",
+          input_schema: {
+            type: "object",
+            properties: {
+              moreDetails: { type: "string", description: "2-3 sentences with specific facts not in the summary" },
+              background: { type: "string", description: "2-3 sentences explaining the topic/situation for someone hearing about it for the first time" },
+              whatHappenedBefore: { type: "string", description: "2-3 sentences about what led to this event" },
+              whyItMatters: { type: "string", description: "2-3 sentences connecting to bigger ideas kids can learn from" },
+              hardWords: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    word: { type: "string" },
+                    meaning: { type: "string", description: "Kid-friendly definition in one sentence" },
+                  },
+                  required: ["word", "meaning"],
+                },
+              },
+              keyPeople: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    who: { type: "string", description: "One sentence about who they are and their role in this story" },
+                  },
+                  required: ["name", "who"],
+                },
+              },
+            },
+            required: ["moreDetails", "background", "whatHappenedBefore", "whyItMatters", "hardWords", "keyPeople"],
+          },
+        }],
+        tool_choice: { type: "tool", name: "deliver_explanation" },
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Claude API error:", response.status, text);
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "Too many requests, please try again later." }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      explanation = JSON.parse(jsonMatch[0]);
+      throw new Error("Claude API error");
+    }
+
+    const aiData = await response.json();
+    const toolUseBlock = aiData.content?.find((b: { type: string }) => b.type === "tool_use");
+    const explanation = toolUseBlock?.input;
+
+    if (!explanation) {
+      return new Response(JSON.stringify({ error: "Could not parse explanation" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify(explanation), {

@@ -1,14 +1,19 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ChevronLeft, Sparkles, Zap } from "lucide-react";
-import { INTERESTS, COMIC_STYLES, COUNTRIES, LANGUAGES, savePreferences, UserPreferences } from "@/lib/newsData";
+import { ChevronRight, ChevronLeft, Sparkles, Zap, X, User } from "lucide-react";
+import { INTERESTS, COMIC_STYLES, COUNTRIES, LANGUAGES, savePreferences, UserPreferences, loadPreferencesFromSupabase } from "@/lib/newsData";
+import AuthModal from "@/components/AuthModal";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 interface OnboardingProps {
   onComplete: (prefs: UserPreferences) => void;
   initialPreferences?: UserPreferences | null;
+  onCancel?: () => void;
+  onLoginSuccess?: (prefs: UserPreferences) => void;
 }
 
-const Onboarding = ({ onComplete, initialPreferences }: OnboardingProps) => {
+const Onboarding = ({ onComplete, initialPreferences, onCancel, onLoginSuccess }: OnboardingProps) => {
   const [step, setStep] = useState(initialPreferences ? 2 : 0);
   const [age, setAge] = useState(initialPreferences?.age ?? 8);
   const [country, setCountry] = useState(initialPreferences?.country ?? "");
@@ -16,6 +21,23 @@ const Onboarding = ({ onComplete, initialPreferences }: OnboardingProps) => {
   const [interests, setInterests] = useState<string[]>(initialPreferences?.interests ?? []);
   const [comicStyle, setComicStyle] = useState(initialPreferences?.comicStyle ?? "");
   const [language, setLanguage] = useState(initialPreferences?.language ?? "en");
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const { signInWithEmail, signUpWithEmail } = useAuth();
+
+  const handleAuthSuccess = async () => {
+    setShowAuthModal(false);
+    // Wait briefly for auth state to propagate
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const cloudPrefs = await loadPreferencesFromSupabase(supabase, session.user.id);
+      if (cloudPrefs) {
+        savePreferences(cloudPrefs);
+        onLoginSuccess?.(cloudPrefs);
+        return;
+      }
+    }
+    // No cloud prefs — user continues onboarding
+  };
 
   const toggleInterest = (id: string) => {
     setInterests((prev) =>
@@ -84,6 +106,15 @@ const Onboarding = ({ onComplete, initialPreferences }: OnboardingProps) => {
         />
         <p className="font-comic font-bold text-sm text-muted-foreground">Slide to pick your age (5-15)</p>
       </div>
+      {onLoginSuccess && (
+        <button
+          onClick={() => setShowAuthModal(true)}
+          className="flex items-center justify-center gap-1 text-sm font-comic font-bold text-primary hover:underline mt-2"
+        >
+          <User className="w-4 h-4" />
+          Already have an account? Sign in
+        </button>
+      )}
     </motion.div>,
 
     // Step 1: Country
@@ -230,6 +261,16 @@ const Onboarding = ({ onComplete, initialPreferences }: OnboardingProps) => {
       <div className="fixed bottom-8 right-6 comic-burst text-2xl !rotate-[8deg] !bg-primary !text-primary-foreground">BAM!</div>
       <div className="fixed top-1/4 right-8 comic-burst text-lg !rotate-[-5deg] !bg-accent !text-accent-foreground">ZAP!</div>
 
+      {onCancel && (
+        <button
+          onClick={onCancel}
+          className="fixed top-4 right-4 z-50 flex items-center gap-1 px-3 py-2 bg-card border-2 border-foreground rounded-lg font-bangers tracking-wide text-sm text-foreground hover:bg-muted transition"
+          style={{ boxShadow: "3px 3px 0px hsl(var(--foreground))" }}
+        >
+          <X className="w-4 h-4" /> CLOSE
+        </button>
+      )}
+
       <div className="relative w-full max-w-2xl">
         {/* Progress bar - comic style */}
         <div className="flex justify-center gap-3 mb-8">
@@ -283,6 +324,13 @@ const Onboarding = ({ onComplete, initialPreferences }: OnboardingProps) => {
           )}
         </div>
       </div>
+
+      <AuthModal
+        open={showAuthModal}
+        onClose={handleAuthSuccess}
+        onEmailSignIn={signInWithEmail}
+        onEmailSignUp={signUpWithEmail}
+      />
     </div>
   );
 };

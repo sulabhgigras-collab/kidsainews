@@ -12,11 +12,14 @@ export const NEWS_TABS: NewsTab[] = [
   { id: "top", label: "Top News", emoji: "🔥", categories: [] },
   { id: "world", label: "World", emoji: "🌍", categories: ["World"] },
   { id: "us", label: "U.S.", emoji: "🇺🇸", categories: ["US"] },
+  { id: "politics", label: "Politics", emoji: "🏛️", categories: ["Politics"] },
   { id: "science", label: "Science", emoji: "🔬", categories: ["Science"] },
+  { id: "environment", label: "Environment", emoji: "🌿", categories: ["Environment", "Nature"] },
   { id: "animals", label: "Animals", emoji: "🐾", categories: ["Animals"] },
   { id: "sports", label: "Sports", emoji: "⚽", categories: ["Sports"] },
   { id: "space", label: "Space", emoji: "🚀", categories: ["Space"] },
   { id: "tech", label: "Technology", emoji: "🤖", categories: ["Tech"] },
+  { id: "education", label: "Education", emoji: "📚", categories: ["Education"] },
   { id: "fun", label: "Fun", emoji: "🎉", categories: ["Culture", "Fun"] },
 ];
 

@@ -44,6 +44,117 @@ export type Database = {
         }
         Relationships: []
       }
+      user_profiles: {
+        Row: {
+          id: string
+          display_name: string | null
+          age: number | null
+          country: string | null
+          additional_countries: string[]
+          interests: string[]
+          comic_style: string
+          language: string
+          parent_email: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          display_name?: string | null
+          age?: number | null
+          country?: string | null
+          additional_countries?: string[]
+          interests?: string[]
+          comic_style?: string
+          language?: string
+          parent_email?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          display_name?: string | null
+          age?: number | null
+          country?: string | null
+          additional_countries?: string[]
+          interests?: string[]
+          comic_style?: string
+          language?: string
+          parent_email?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      reading_history: {
+        Row: {
+          id: string
+          user_id: string
+          story_title: string
+          story_url: string | null
+          category: string | null
+          read_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          story_title: string
+          story_url?: string | null
+          category?: string | null
+          read_at?: string
+        }
+        Update: {
+          user_id?: string
+          story_title?: string
+          story_url?: string | null
+          category?: string | null
+        }
+        Relationships: []
+      }
+      bookmarks: {
+        Row: {
+          id: string
+          user_id: string
+          story_data: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          story_data: Json
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          story_data?: Json
+        }
+        Relationships: []
+      }
+      reading_streaks: {
+        Row: {
+          user_id: string
+          current_streak: number
+          longest_streak: number
+          last_read_date: string | null
+          badges: string[]
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          current_streak?: number
+          longest_streak?: number
+          last_read_date?: string | null
+          badges?: string[]
+          updated_at?: string
+        }
+        Update: {
+          current_streak?: number
+          longest_streak?: number
+          last_read_date?: string | null
+          badges?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

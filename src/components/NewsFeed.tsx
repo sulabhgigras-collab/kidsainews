@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { motion } from "framer-motion";
-import { RefreshCw, Settings, Sparkles, Zap, Globe } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { RefreshCw, Settings, Zap, Globe, Moon, Sun, User, LogOut, Bookmark } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import ComicCard from "@/components/ComicCard";
 import CategoryTabs, { NEWS_TABS } from "@/components/CategoryTabs";
 import StorySkeletonGrid from "@/components/StoryCardSkeleton";
+import AuthModal from "@/components/AuthModal";
+import StreakBadge from "@/components/StreakBadge";
 import {
   UserPreferences,
   NewsStory,
@@ -15,15 +18,28 @@ import {
   INTERESTS,
   LANGUAGES,
   savePreferences,
+  syncPreferencesToSupabase,
 } from "@/lib/newsData";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useBookmarks } from "@/hooks/useBookmarks";
+import { useReadingHistory } from "@/hooks/useReadingHistory";
+import { useStreak } from "@/hooks/useStreak";
 
 interface NewsFeedProps {
   preferences: UserPreferences;
   onEditPreferences: () => void;
   onPreferencesChange?: (prefs: UserPreferences) => void;
 }
+
+const LOADING_MESSAGES = [
+  "Gathering today's news...",
+  "Asking Mina & Rosey to explain...",
+  "Making it kid-friendly...",
+  "Checking BBC, Reuters, and more...",
+  "Almost ready!",
+];
 
 const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsFeedProps) => {
   const [stories, setStories] = useState<NewsStory[]>([]);
@@ -33,7 +49,25 @@ const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsF
   const [sourcesUsed, setSourcesUsed] = useState<string[]>([]);
   const [noNewsReason, setNoNewsReason] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("top");
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Auth, bookmarks, streaks
+  const { user, signInWithEmail, signUpWithEmail, signOut } = useAuth();
+  const { toggleBookmark, isBookmarked } = useBookmarks(user?.id ?? null);
+  const { recordRead } = useReadingHistory(user?.id ?? null);
+  const { streak, recordToday } = useStreak(user?.id ?? null);
+
+  // Record streak when stories load
+  useEffect(() => {
+    if (stories.length > 0 && user) {
+      recordToday();
+    }
+  }, [stories.length > 0, user?.id]);
 
   const currentLang = LANGUAGES.find((l) => l.id === preferences.language) || LANGUAGES[0];
   const cacheKey = getNewsCacheKey(preferences);
@@ -44,9 +78,29 @@ const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsF
     [preferences.interests]
   );
 
+  // Cycle loading messages
+  useEffect(() => {
+    if (!loading) {
+      setLoadingMessageIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [loading]);
+
+  const toggleDarkMode = () => {
+    const next = !isDark;
+    setIsDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("kidsainews_theme", next ? "dark" : "light");
+  };
+
   const handleLanguageChange = (langId: string) => {
     const updated = { ...preferences, language: langId };
     savePreferences(updated);
+    if (user) syncPreferencesToSupabase(supabase, user.id, updated);
     onPreferencesChange?.(updated);
     setShowLangMenu(false);
     clearNewsCache();
@@ -56,7 +110,6 @@ const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsF
   const currentStyle = COMIC_STYLES.find((s) => s.id === preferences.comicStyle);
 
   const fetchNews = useCallback(async (forceRefresh = false) => {
-    // Check localStorage cache first (instant)
     if (!forceRefresh) {
       const cached = getCachedNews(cacheKey);
       if (cached) {
@@ -151,6 +204,17 @@ const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsF
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
               NEW!
             </motion.button>
+            <button
+              onClick={toggleDarkMode}
+              className="p-2 rounded-lg border-2 border-primary-foreground/30 hover:bg-primary-foreground/10 transition"
+              title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {isDark ? (
+                <Sun className="w-5 h-5 text-primary-foreground" />
+              ) : (
+                <Moon className="w-5 h-5 text-primary-foreground" />
+              )}
+            </button>
             <div className="relative">
               <button
                 onClick={() => setShowLangMenu(!showLangMenu)}
@@ -181,12 +245,62 @@ const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsF
                 </>
               )}
             </div>
+            {user && streak && (
+              <StreakBadge
+                currentStreak={streak.current_streak}
+                longestStreak={streak.longest_streak}
+                badges={streak.badges}
+              />
+            )}
             <button
               onClick={onEditPreferences}
               className="p-2 rounded-lg border-2 border-primary-foreground/30 hover:bg-primary-foreground/10 transition"
             >
               <Settings className="w-5 h-5 text-primary-foreground" />
             </button>
+            {/* Auth button */}
+            {user ? (
+              <div className="relative">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="p-2 rounded-lg border-2 border-primary-foreground/30 hover:bg-primary-foreground/10 transition"
+                  title={user.email ?? "Account"}
+                >
+                  <User className="w-5 h-5 text-primary-foreground" />
+                </button>
+                {showUserMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+                    <div className="absolute right-0 top-full mt-2 z-50 bg-card border-2 border-foreground rounded-lg shadow-[4px_4px_0px_hsl(var(--foreground))] p-2 w-48">
+                      <p className="px-3 py-1 font-comic font-bold text-xs text-muted-foreground truncate">
+                        {user.email}
+                      </p>
+                      <button
+                        onClick={() => { setShowUserMenu(false); navigate("/bookmarks"); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left font-comic font-bold text-sm text-card-foreground hover:bg-muted transition"
+                      >
+                        <Bookmark className="w-4 h-4" /> Saved Stories
+                      </button>
+                      <button
+                        onClick={() => { setShowUserMenu(false); signOut(); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left font-comic font-bold text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                      >
+                        <LogOut className="w-4 h-4" /> Sign Out
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <motion.button
+                onClick={() => setShowAuthModal(true)}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg border-2 border-primary-foreground/30 hover:bg-primary-foreground/10 transition font-bangers text-sm text-primary-foreground tracking-wide"
+                whileTap={{ scale: 0.95 }}
+              >
+                <User className="w-4 h-4" />
+                Login
+              </motion.button>
+            )}
           </div>
         </div>
       </header>
@@ -221,12 +335,50 @@ const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsF
             )}
           </div>
           {sourcesUsed.length > 0 && (
-            <p className="font-comic font-bold text-sm text-muted-foreground">Trusted sources: {sourcesUsed.join(", ")}</p>
+            <p className="font-comic font-bold text-sm text-muted-foreground">
+              From {sourcesUsed.join(", ")}
+            </p>
           )}
         </motion.div>
 
-        {/* Skeleton loading */}
-        {loading && <StorySkeletonGrid count={6} />}
+        {/* Enhanced loading with character animation and cycling messages */}
+        {loading && (
+          <div className="space-y-6">
+            <motion.div
+              className="text-center space-y-3"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              <motion.div
+                className="text-6xl inline-block"
+                animate={{
+                  y: [0, -15, 0],
+                  rotate: [0, -5, 5, 0],
+                }}
+                transition={{
+                  duration: 1.2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              >
+                🐿️
+              </motion.div>
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={loadingMessageIndex}
+                  className="font-bangers text-xl text-foreground tracking-wide"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {LOADING_MESSAGES[loadingMessageIndex]}
+                </motion.p>
+              </AnimatePresence>
+            </motion.div>
+            <StorySkeletonGrid count={6} />
+          </div>
+        )}
 
         {error && !loading && (
           <div className="text-center py-16 space-y-4">
@@ -268,9 +420,12 @@ const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsF
                 story={story}
                 index={i}
                 comicStyle={preferences.comicStyle}
-                imageDelay={i * 12000}
                 age={preferences.age}
                 language={preferences.language}
+                onBookmarkToggle={toggleBookmark}
+                isBookmarked={isBookmarked(story.sourceUrl)}
+                userId={user?.id}
+                onStoryRead={recordRead}
               />
             ))}
           </div>
@@ -303,6 +458,13 @@ const NewsFeed = ({ preferences, onEditPreferences, onPreferencesChange }: NewsF
           ⚡ REAL SOURCES ONLY • MADE FOR KIDS • UPDATED DAILY ⚡
         </p>
       </footer>
+
+      <AuthModal
+        open={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onEmailSignIn={signInWithEmail}
+        onEmailSignUp={signUpWithEmail}
+      />
     </div>
   );
 };

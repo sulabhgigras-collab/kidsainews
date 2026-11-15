@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ExternalLink, ImageIcon, Loader2, RotateCw } from "lucide-react";
+import { ExternalLink, Heart, Volume2 } from "lucide-react";
+import { useState, useRef } from "react";
 import { NewsStory, DialogueLine } from "@/lib/newsData";
-import { supabase } from "@/integrations/supabase/client";
 import StoryExplainer from "@/components/StoryExplainer";
+import StoryIllustration from "@/components/StoryIllustration";
 
 interface ComicCardProps {
   story: NewsStory;
@@ -12,6 +12,10 @@ interface ComicCardProps {
   imageDelay?: number;
   age?: number;
   language?: string;
+  onBookmarkToggle?: (story: NewsStory) => void;
+  isBookmarked?: boolean;
+  userId?: string;
+  onStoryRead?: (story: NewsStory) => void;
 }
 
 const PANEL_COLORS = [
@@ -39,60 +43,28 @@ const formatPublishedTime = (value: string) => {
   });
 };
 
-const ComicCard = ({ story, index, comicStyle, imageDelay = 0, age = 10, language = "en" }: ComicCardProps) => {
-  const panelColor = PANEL_COLORS[index % PANEL_COLORS.length];
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageLoading, setImageLoading] = useState(false);
-  const [imageFailed, setImageFailed] = useState(false);
+const ComicCard = ({ story, index, comicStyle, age = 10, language = "en", onBookmarkToggle, isBookmarked = false, userId, onStoryRead }: ComicCardProps) => {
+  const [speaking, setSpeaking] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  const fetchImage = (attempt: number = 0) => {
-    if (!story.imageDescription) return;
-
-    const cacheKey = `kidsainews_img_${Array.from(new TextEncoder().encode(story.title)).map(b => b.toString(36)).join("").slice(0, 30)}`;
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      setImageUrl(cached);
+  const toggleAudio = () => {
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
       return;
     }
-
-    setImageLoading(true);
-    setImageFailed(false);
-
-    const delay = attempt === 0 ? imageDelay : imageDelay + Math.pow(2, attempt) * 5000;
-
-    const timeout = setTimeout(async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke("generate-comic-image", {
-          body: { imageDescription: story.imageDescription, comicStyle },
-        });
-
-        if (!error && data?.imageUrl) {
-          setImageUrl(data.imageUrl);
-          try { sessionStorage.setItem(cacheKey, data.imageUrl); } catch {}
-          setImageLoading(false);
-        } else if (attempt < 4) {
-          fetchImage(attempt + 1);
-        } else {
-          setImageLoading(false);
-          setImageFailed(true);
-        }
-      } catch {
-        if (attempt < 4) {
-          fetchImage(attempt + 1);
-        } else {
-          setImageLoading(false);
-          setImageFailed(true);
-        }
-      }
-    }, delay);
-
-    return () => clearTimeout(timeout);
+    const text = `${story.title}. ${story.story}. ${story.dialogue.map(d => `${d.speaker === "mina" ? "Mina" : "Rosey"} says: ${d.text}`).join(". ")}. Fun fact: ${story.funFact}`;
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.9;
+    utt.pitch = 1.1;
+    utt.onend = () => setSpeaking(false);
+    utt.onerror = () => setSpeaking(false);
+    utteranceRef.current = utt;
+    setSpeaking(true);
+    window.speechSynthesis.speak(utt);
   };
 
-  useEffect(() => {
-    const cleanup = fetchImage(0);
-    return cleanup;
-  }, [story.imageDescription, story.title, comicStyle, imageDelay]);
+  const panelColor = PANEL_COLORS[index % PANEL_COLORS.length];
 
   const rotations = [-2, 1.5, -1, 2, -1.5, 1];
   const rot = rotations[index % rotations.length];
@@ -102,6 +74,10 @@ const ComicCard = ({ story, index, comicStyle, imageDelay = 0, age = 10, languag
     : [
         { speaker: "mina", text: story.story },
       ];
+
+  // Reading time estimate (150 WPM for kids)
+  const wordCount = (story.story + " " + story.dialogue.map(d => d.text).join(" ") + " " + story.funFact).split(/\s+/).length;
+  const readingTime = Math.max(1, Math.ceil(wordCount / 150));
 
   return (
     <motion.article
@@ -124,44 +100,54 @@ const ComicCard = ({ story, index, comicStyle, imageDelay = 0, age = 10, languag
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          <span className="font-comic font-bold text-xs text-foreground/70">
+            ⏱️ {readingTime} min
+          </span>
+          {(story as any).simplicityScore && (
+            <span className="flex items-center gap-0.5" title={`Simplicity: ${(story as any).simplicityScore}/5`}>
+              {Array.from({ length: 5 }, (_, i) => (
+                <span
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    i < (story as any).simplicityScore
+                      ? "bg-comic-green"
+                      : "bg-foreground/20"
+                  }`}
+                />
+              ))}
+            </span>
+          )}
           <span className="text-lg">🐿️</span>
           <span className="text-lg">🦊</span>
+          <button
+            onClick={toggleAudio}
+            className={`p-1 rounded-full transition ${speaking ? "bg-foreground/20" : "hover:bg-foreground/10"}`}
+            title={speaking ? "Stop reading" : "Read aloud"}
+          >
+            <Volume2 className={`w-4 h-4 ${speaking ? "text-primary" : "text-foreground/60"}`} />
+          </button>
+          {userId && onBookmarkToggle && (
+            <button
+              onClick={() => onBookmarkToggle(story)}
+              className="p-1 rounded-full hover:bg-foreground/10 transition"
+              title={isBookmarked ? "Remove bookmark" : "Save story"}
+            >
+              <Heart
+                className={`w-4 h-4 transition ${isBookmarked ? "fill-white text-foreground drop-shadow-[0_0_1px_rgba(0,0,0,0.5)]" : "text-foreground/60"}`}
+              />
+            </button>
+          )}
           <div className="comic-burst text-xs !py-0.5 !px-2">
             #{index + 1}
           </div>
         </div>
       </div>
 
-      <div className="relative w-full aspect-[16/10] bg-muted comic-dots overflow-hidden border-b-3 border-foreground">
-        {imageLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80 gap-2">
-            <Loader2 className="w-10 h-10 text-comic-red animate-spin" />
-            <span className="font-bangers text-sm text-muted-foreground">Drawing...</span>
-          </div>
-        )}
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={`${story.title} illustration based on a real news article from ${story.sourceName}`}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : imageFailed ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/50 gap-2">
-            <ImageIcon className="w-10 h-10 text-muted-foreground/60" />
-            <button
-              onClick={() => fetchImage(0)}
-              className="flex items-center gap-1 text-xs font-bold text-comic-blue hover:underline"
-            >
-              <RotateCw className="w-3 h-3" /> Retry
-            </button>
-          </div>
-        ) : !imageLoading ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
-            <ImageIcon className="w-10 h-10 text-muted-foreground/40" />
-          </div>
-        ) : null}
-      </div>
+      <StoryIllustration
+        title={story.title}
+        emoji={story.emoji}
+        category={story.category}
+      />
 
       <div className="p-4 space-y-3 comic-dots">
         <h3 className="font-bangers text-2xl text-card-foreground leading-tight tracking-wide">
